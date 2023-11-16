@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 class PhyCell_Cell(nn.Module):
     def __init__(self, input_dim, F_hidden_dim, kernel_size, bias=1):
         super(PhyCell_Cell, self).__init__()

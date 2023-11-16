@@ -1,5 +1,6 @@
 import torch
-import torchvision
+import os
+from torchvision.utils import save_image
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -22,6 +23,7 @@ parser.add_argument('--nepochs', type=int, default=2001, help='nb of epochs')
 parser.add_argument('--print_every', type=int, default=1, help='')
 parser.add_argument('--eval_every', type=int, default=10, help='')
 parser.add_argument('--save_name', type=str, default='phydnet', help='')
+parser.add_argument('--output', type=str, default='output/', help='')
 args = parser.parse_args()
 
 
@@ -98,10 +100,34 @@ def trainIters(encoder, nepochs, print_every=10,eval_every=10,name=''):
         if (epoch+1) % eval_every == 0:
             mse, mae,ssim = evaluate(encoder,test_loader) 
             scheduler_enc.step(mse)                   
-            torch.save(encoder.state_dict(),'save/encoder_{}.pth'.format(name))                           
+            
+        torch.save(encoder.state_dict(),'save/encoder_{}_{}.pth'.format(name, epoch))                           
     return train_losses
 
+def save_images(input, target, predictions, batch_index, output_dir):
+    # Create a directory to save images if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Convert numpy arrays to torch tensors
+    input_tensor = torch.from_numpy(input)
+    target_tensor = torch.from_numpy(target)
+    predictions_tensor = torch.from_numpy(predictions)
+
+    # Loop through sequences
+    for sequence_index in range(input.shape[0]):
+        # Select input, target, and predictions for the current sequence
+        input_sequence = input_tensor[sequence_index]
+        target_sequence = target_tensor[sequence_index]
+        predictions_sequence = predictions_tensor[sequence_index]
+
+        # Concatenate tensors along the channel dimension
+        combined_images = torch.cat([input_sequence, target_sequence, predictions_sequence], dim=0)
+
+        # Save the combined images using torchvision's save_image function
+        save_image(combined_images, os.path.join(output_dir, f'batch_{batch_index}_sequence_{sequence_index}.png'), nrow=10, normalize=False)
     
+
 def evaluate(encoder,loader):
     total_mse, total_mae,total_ssim,total_bce = 0,0,0,0
     t0 = time.time()
@@ -128,6 +154,9 @@ def evaluate(encoder,loader):
             predictions =  np.stack(predictions) # (10, batch_size, 1, 64, 64)
             predictions = predictions.swapaxes(0,1)  # (batch_size,10, 1, 64, 64)
 
+            # Save input, target, and predicted images
+            save_images(input, target, predictions, i, args.output)
+
             mse_batch = np.mean((predictions-target)**2 , axis=(0,1,2)).sum()
             mae_batch = np.mean(np.abs(predictions-target) ,  axis=(0,1,2)).sum() 
             total_mse += mse_batch
@@ -135,7 +164,7 @@ def evaluate(encoder,loader):
             
             for a in range(0,target.shape[0]):
                 for b in range(0,target.shape[1]):
-                    total_ssim += ssim(target[a,b,0,], predictions[a,b,0,]) / (target.shape[0]*target.shape[1]) 
+                    total_ssim += ssim(target[a,b,0,], predictions[a,b,0,], data_range= 1) / (target.shape[0]*target.shape[1]) 
 
             
             cross_entropy = -target*np.log(predictions) - (1-target) * np.log(1-predictions)
@@ -158,8 +187,8 @@ print('phycell ' , count_parameters(phycell) )
 print('convcell ' , count_parameters(convcell) ) 
 print('encoder ' , count_parameters(encoder) ) 
 
-trainIters(encoder,args.nepochs,print_every=args.print_every,eval_every=args.eval_every,name=args.save_name)
+#trainIters(encoder,args.nepochs,print_every=args.print_every,eval_every=args.eval_every,name=args.save_name)
 
-#encoder.load_state_dict(torch.load('save/encoder_phydnet.pth'))
-#encoder.eval()
-#mse, mae,ssim = evaluate(encoder,test_loader) 
+encoder.load_state_dict(torch.load('save/encoder_phydnet.pth', map_location ='cpu'))
+encoder.eval()
+mse, mae,ssim = evaluate(encoder,test_loader) 

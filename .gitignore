@@ -1,3 +1,5 @@
 data/train-images-idx3-ubyte.gz
 __pycache__
 data/mnist_test_seq.npy
+test_cuda.py
+output
