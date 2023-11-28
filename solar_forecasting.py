@@ -25,20 +25,11 @@ class SolarForecasting(Dataset):
         self.n_frames_output = n_frames_output
         self.n_frames_total = self.n_frames_input + self.n_frames_output
         self.transform = transform
-
-        # Open HDF5 file
-        with h5py.File(self.hdf5_path, 'r') as file:
-            if is_train:
-                self.raw_data = file['trainval'] 
-                self.timestamp = np.load(self.trainval_times_path, allow_pickle= True)
-            else:
-                self.raw_data = file['test']
-                self.timestamp = np.load(self.test_times_path, allow_pickle= True)
-            self.images = self.raw_data['images']
-            self.pv = self.raw_data['pv_outputs']
-            self.total_size = self.timestamp.shape[0]
-            
-
+        if self.is_train:
+            self.timestamp = np.load(self.trainval_times_path, allow_pickle= True)
+        else:
+            self.timestamp = np.load(self.test_times_path, allow_pickle= True)
+        self.total_size = self.timestamp.shape[0]
         self.preprocessing(dt, tolerance)
         
 
@@ -105,33 +96,42 @@ class SolarForecasting(Dataset):
         return self.length
 
     def __getitem__(self, idx):
-        # get indices of sequence
-        indices = self.sequence[idx]
-        # get input indices (beginning)
-        input_idcs = indices[:self.n_frames_input]
-        # get output indices (ending)
-        output_idcs = indices[-self.n_frames_output:]
+        # Open HDF5 file
+        with h5py.File(self.hdf5_path, 'r') as file:
+            if self.is_train:
+                raw_data = file['trainval'] 
+            else:
+                raw_data = file['test']
+            images = raw_data['images_log']
+            pv = raw_data['pv_log']
+            
 
-        # get input images
-        input_frames = np.array([self.images[i] for i in input_idcs])
-        # get input images
-        input_pv = np.array([self.pv[i] for i in input_idcs])
-        # get output pv
-        output_frames = np.array([self.images[i] for i in output_idcs])
-        # get output pv
-        output_pv = np.array([self.pv[i] for i in output_idcs])
+            # get indices of sequence
+            indices = self.sequences[idx]
+            # Get images
+            images = np.array([images[i] for i in indices])
+            # Get pv
+            pv = np.array([pv[i] for i in indices])
+            # Apply transformations if provided
+            if self.transform:
+                images = self.transform(images)
 
-        # Apply transformations if provided
-        if self.transform:
-            image = self.transform(image)
+            # get input images
+            input_frames = images[:self.n_frames_input]
+            # get input images
+            input_pv = pv[:self.n_frames_input]
+            # get output pv
+            output_frames = images[-self.n_frames_output:]
+            # get output pv
+            output_pv = pv[-self.n_frames_output:]
 
-        # transform into torch tensors
-        input_frames = torch.from_numpy(input_frames).contiguous()
-        output_frames = torch.from_numpy(output_frames).contiguous()
-        input_pv = torch.from_numpy(input_pv).contiguous()
-        output_pv = torch.from_numpy(output_pv).contiguous()
-        
-        return [idx, input_frames, output_frames, input_pv, output_pv]
+            # transform into torch tensors
+            input_frames = torch.from_numpy(input_frames).contiguous().float()
+            output_frames = torch.from_numpy(output_frames).contiguous().float()
+            input_pv = torch.from_numpy(input_pv).contiguous().float()
+            output_pv = torch.from_numpy(output_pv).contiguous().float()
+            
+            return [idx, input_frames, output_frames, input_pv, output_pv]
 
 # Example usage:
 trainval_dataset = SolarForecasting(root= root)

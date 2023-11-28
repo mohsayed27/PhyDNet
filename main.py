@@ -12,6 +12,8 @@ from models.models import ConvLSTM,PhyCell, EncoderRNN
 from data.moving_mnist import MovingMNIST
 from constrain_moments import K2M
 from skimage.metrics import structural_similarity as ssim
+from solar_forecasting import SolarForecasting
+from PIL import Image
 import argparse
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -26,12 +28,33 @@ parser.add_argument('--save_name', type=str, default='phydnet', help='')
 parser.add_argument('--output', type=str, default='output/', help='')
 args = parser.parse_args()
 
+root = root = r'D:\dev\SolarForescastingDataset'
 
-mm = MovingMNIST(root=args.root, is_train=True, n_frames_input=10, n_frames_output=10, num_objects=[2])
-train_loader = torch.utils.data.DataLoader(dataset=mm, batch_size=args.batch_size, shuffle=True, num_workers=0)
+def RGN(images):
+    # Convert images to greyscale
+    images = np.dot(images[..., :3], [0.2989, 0.5870, 0.1140])
 
-mm = MovingMNIST(root=args.root, is_train=False, n_frames_input=10, n_frames_output=10, num_objects=[2])
-test_loader = torch.utils.data.DataLoader(dataset=mm, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # Convert NumPy array to PIL images
+    #images = [Image.fromarray(image.astype(np.uint8)) for image in images]
+
+    """ # Resize the images to a target size using bicubic interpolation
+    target_size = (16, 16)
+    resized_images = [image.resize(target_size, Image.BICUBIC) for image in images]
+
+    # Convert the resized images back to NumPy array
+    images = np.array([np.array(image) for image in resized_images]) """
+    # Add dimension to comply to PhyDNet input
+    images = np.expand_dims(images, axis=1)
+    # Normalize the images
+    images = (images / 255.0)    
+    return images
+
+
+sfc = SolarForecasting(root= root, is_train= True, n_frames_input= 8, n_frames_output= 8, transform= RGN)
+train_loader = torch.utils.data.DataLoader(dataset=sfc, batch_size=args.batch_size, shuffle=True, num_workers=0)
+
+sfc = SolarForecasting(root= root, is_train= False, n_frames_input= 8, n_frames_output= 8, transform= RGN)
+test_loader = torch.utils.data.DataLoader(dataset=sfc, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
 constraints = torch.zeros((49,7,7)).to(device)
 ind = 0
